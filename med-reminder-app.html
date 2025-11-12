@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medication Reminder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 2em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input[type="text"],
+        input[type="datetime-local"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="datetime-local"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .medication-list {
+            margin-top: 30px;
+        }
+
+        .medication-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .med-info {
+            flex: 1;
+        }
+
+        .med-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .med-time {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .delete-btn {
+            background: #ff4757;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .delete-btn:hover {
+            background: #ff3838;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .enable-notif {
+            background: #ffc107;
+            color: #333;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .enable-notif:hover {
+            background: #ffb300;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💊 Medication Reminder</h1>
+        
+        <div id="notifPrompt" class="enable-notif" style="display: none;">
+            Click here to enable notifications
+        </div>
+        
+        <div id="status" style="display: none;"></div>
+
+        <div class="form-group">
+            <label for="medName">Medication Name</label>
+            <input type="text" id="medName" placeholder="e.g., Aspirin 100mg">
+        </div>
+
+        <div class="form-group">
+            <label for="medTime">Date & Time</label>
+            <input type="datetime-local" id="medTime">
+        </div>
+
+        <button class="btn" onclick="addMedication()">Add Medication Reminder</button>
+
+        <div class="medication-list" id="medList"></div>
+    </div>
+
+    <script>
+        let medications = [];
+        let scheduledNotifications = {};
+
+        // Check notification permission on load
+        window.addEventListener('load', () => {
+            if ('Notification' in window && Notification.permission === 'default') {
+                document.getElementById('notifPrompt').style.display = 'block';
+            }
+            loadMedications();
+            displayMedications();
+        });
+
+        document.getElementById('notifPrompt').addEventListener('click', () => {
+            requestNotificationPermission();
+        });
+
+        function requestNotificationPermission() {
+            if ('Notification' in window) {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        showStatus('Notifications enabled!', 'success');
+                        document.getElementById('notifPrompt').style.display = 'none';
+                    } else {
+                        showStatus('Notifications denied. You won\'t receive reminders.', 'error');
+                    }
+                });
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+
+        function addMedication() {
+            const name = document.getElementById('medName').value.trim();
+            const time = document.getElementById('medTime').value;
+
+            if (!name || !time) {
+                showStatus('Please fill in all fields', 'error');
+                return;
+            }
+
+            const reminderDate = new Date(time);
+            if (reminderDate <= new Date()) {
+                showStatus('Please select a future date and time', 'error');
+                return;
+            }
+
+            const medication = {
+                id: Date.now(),
+                name: name,
+                time: time,
+                timestamp: reminderDate.getTime()
+            };
+
+            medications.push(medication);
+            saveMedications();
+            scheduleNotification(medication);
+            displayMedications();
+
+            document.getElementById('medName').value = '';
+            document.getElementById('medTime').value = '';
+            
+            showStatus('Medication reminder added!', 'success');
+        }
+
+        function scheduleNotification(med) {
+            const now = Date.now();
+            const delay = med.timestamp - now;
+
+            if (delay > 0) {
+                const timeoutId = setTimeout(() => {
+                    showNotification(med);
+                }, delay);
+                
+                scheduledNotifications[med.id] = timeoutId;
+            }
+        }
+
+        function showNotification(med) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('Medication Reminder', {
+                    body: `Time to take: ${med.name}`,
+                    icon: '💊',
+                    tag: med.id
+                });
+            }
+            
+            // Also show browser alert as fallback
+            alert(`Medication Reminder!\n\nTime to take: ${med.name}`);
+        }
+
+        function deleteMedication(id) {
+            medications = medications.filter(med => med.id !== id);
+            
+            // Clear scheduled notification
+            if (scheduledNotifications[id]) {
+                clearTimeout(scheduledNotifications[id]);
+                delete scheduledNotifications[id];
+            }
+            
+            saveMedications();
+            displayMedications();
+            showStatus('Medication reminder deleted', 'success');
+        }
+
+        function displayMedications() {
+            const list = document.getElementById('medList');
+            
+            if (medications.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">No medications scheduled</p>';
+                return;
+            }
+
+            medications.sort((a, b) => a.timestamp - b.timestamp);
+
+            list.innerHTML = medications.map(med => {
+                const date = new Date(med.time);
+                const dateStr = date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric', 
+                    year: 'numeric' 
+                });
+                const timeStr = date.toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    minute: '2-digit' 
+                });
+
+                return `
+                    <div class="medication-item">
+                        <div class="med-info">
+                            <div class="med-name">${med.name}</div>
+                            <div class="med-time">${dateStr} at ${timeStr}</div>
+                        </div>
+                        <button class="delete-btn" onclick="deleteMedication(${med.id})">Delete</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function saveMedications() {
+            const data = JSON.stringify(medications);
+            document.cookie = `medications=${data}; max-age=31536000; path=/`;
+        }
+
+        function loadMedications() {
+            const cookies = document.cookie.split('; ');
+            const medCookie = cookies.find(c => c.startsWith('medications='));
+            
+            if (medCookie) {
+                try {
+                    medications = JSON.parse(medCookie.split('=')[1]);
+                    
+                    // Re-schedule future notifications
+                    medications.forEach(med => {
+                        if (med.timestamp > Date.now()) {
+                            scheduleNotification(med);
+                        }
+                    });
+                } catch (e) {
+                    medications = [];
+                }
+            }
+        }
+    </script>
+</body>
+</html>
